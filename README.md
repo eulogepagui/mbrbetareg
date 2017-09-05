@@ -21,6 +21,10 @@ proposed in Kenne Pagui et al. (2017):
 
 * * *
 
+## Authors
+
+The mbrbetareg implementation has been written by Euloge Clovis Kenne Pagui (kenne@stat.unipd.it) and Nicola Sartori (sartori@stat.unipd.it) From the University of Padova.
+
 ## References
 
 Kenne Pagui, E. C., Salvan, A. and Sartori, N. (2017). Median bias reduction of maximum likelihood estimates. *Biometrika to appear*,  http://arxiv.org/abs/1604.04768.
