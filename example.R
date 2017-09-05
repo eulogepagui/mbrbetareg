@@ -3,31 +3,48 @@
 #####################################################
 
 source("mbrbetareg.R")
-library(betareg)
+
+
+##################################################
+###       Food expenditure dataset             ###
+### available on betareg R package             ###     
+###  no covariates on the precision parameter  ###
+##################################################
+
 data("FoodExpenditure", package = "betareg")
 attach(FoodExpenditure)
 
 
-## Fit the GLM using maximum likelihood using R package betareg 
-
+## maximum likelihood fit using R package betareg 
 fe_mle <- betareg(I(food/income) ~ income + persons, data = FoodExpenditure,type="ML")
-coef(fe_mle)
+summary(fe_mle)
 
 ## Mean bias-reduced fit usind the R package betareg
+fe_meanBR <- betareg(I(food/income) ~ income + persons, data = FoodExpenditure,type="BR")
+summary(fe_meanBR)
 
-fe_br <- betareg(I(food/income) ~ income + persons, data = FoodExpenditure,type="BR")
-coef(fe_br)
+## Median bias-reduced fit usind the R function  mbrbetareg 
+fe_medianBR <- mbrbetareg(I(food/income) ~ income + persons, data = FoodExpenditure,type="medianBR")
+summary(fe_medianBR)
 
-## Median bias-reduced fit 
 
-par <- coef(fe_mle)                  ## initial values for the vector of parameters
-y<- food/income                      ## response variable
-X<- model.matrix(fe_mle)             ## design matrix involving covariates of the response mean
-Z <- matrix(rep(1,nrow(X)),nrow(X),1)## design matrix invoving covariates of the response precision
-eps <- 1e-06                         ## positive convergence tolerance 
-maxit <- 100                         ## maximal number of IWLS iterations
-link <-"logit"                       ##  link function for the mean 
-phi_link <- "identity"               ## link function for the precision parameter
-mlembr=mbrbetareg.fit(par=par,y=y,X=X,Z=Z,eps=eps,maxit=maxit,link=link,phi_link=phi_link)
-mlembr$par
+#####################################################
+###      Reading Skills  dataset               ######
+###   available on betareg R package           ######
+### covariates on the precision parameters     ######
+#####################################################
 
+data("ReadingSkills", package = "betareg")
+
+## maximum likelihood fit using R package betareg 
+rs_f <- accuracy ~ dyslexia * iq | dyslexia * iq
+rs_ML<- betareg(rs_f, data = ReadingSkills, type = "ML")
+summary(rs_ML)
+
+## Mean bias-reduced fit usind the R package betareg
+rs_meanBR<- betareg(rs_f, data = ReadingSkills, type = "BR")
+summary(rs_meanBR)
+
+## Median bias-reduced fit usind the R function  mbrbetareg
+rs_medianBR<- mbrbetareg(rs_f, data = ReadingSkills, type = "medianBR")
+summary(rs_medianBR)
