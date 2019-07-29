@@ -7,21 +7,22 @@
 ## Alexandre B. Simas 
 ## Andrea V. Rocha 
 
-## In particular, 'mbrbetareg' and 'mbrbetareg.fit' were written using as basis the code 
+##  'mbrbetareg' and 'mbrbetareg.fit' were written using as basis the code 
 ## of 'betareg' and 'betareg.fit', respectively.
 
-##  'print.mbrbetareg' is a copy of 'print.betareg'
-##  'summary.mbrbetareg' is a copy of 'summary.betareg'
-##  'print.summary.mbrbetareg' is a copy of 'print.summary.betareg'
+## 'mbrbetareg.control' is a slight modified copy of  'betareg.control'
 
-## Euloge Clovis Kenne Pagui <kenne@stat.unipd.it> [01/09/2017]
+## the rest of the functions  are  copies of the corresponding ones from R package 
+## betareg through its own class named 'betareg'.
+
+## Euloge Clovis Kenne Pagui <kenne@stat.unipd.it> [29/07/2019]
 
 library(Formula)
 library(betareg)
 
 mbrbetareg <- function(formula, data, subset, na.action, weights, offset,
                     link = c("logit", "probit", "cloglog", "cauchit", "log", "loglog"),
-                    link.phi = NULL, type = c("ML", "medianBR"),
+                    link.phi = NULL, type = c( "medianBR","ML"),
                     control = betareg.control(...),
                     model = TRUE, y = TRUE, x = FALSE, ...)
 {
@@ -110,12 +111,12 @@ mbrbetareg <- function(formula, data, subset, na.action, weights, offset,
   if(y) fitmodel$y <- Y
   if(x) fitmodel$x <- list(mean = X, precision = Z)
 
-  class(fitmodel) <- "mbrbetareg"
+  class(fitmodel) <- "betareg"
   return(fitmodel)
 }
 
 
-mbrbetareg.control <- function(phi = TRUE, method = "BFGS",maxit = 5000,
+mbrbetareg.control <- function(phi = TRUE, method = "BFGS",maxit = 500,
                              hessian = FALSE, trace = FALSE, start = NULL,
                              fsmaxit = 200, fstol = 1e-8, ...) {
   res <- list(phi = phi,  hessian = hessian, method = method, trace = trace, 
@@ -130,9 +131,9 @@ mbrbetareg.control <- function(phi = TRUE, method = "BFGS",maxit = 5000,
 }
 
 mbrbetareg.fit <- function(x, y, z = NULL, weights = NULL, offset = NULL,
-                           link = "logit", link.phi = "log", type = "ML",
+                           link = "logit", link.phi = "log", type = "medianBR",
                            control = mbrbetareg.control()) {
-  dyn.load("mod1.so")
+  ## dyn.load("mod1.so") 
   #######################################
   ## response (y),  design matrix (x, z)#
   #######################################
@@ -437,21 +438,48 @@ mbrbetareg.fit <- function(x, y, z = NULL, weights = NULL, offset = NULL,
   }
   
   ###################################
-  ## factor of the adjustment     ###
-  ## adjustment = info%*%mod1     ###
+  ## factor of the adjustment(M1)     ###
+  ## adjustment = info%*%M1     ###
   ###################################
   
-  mod1 <- function(par, inverse_info, fit = NULL) {
+  # mod1 <- function(par, inverse_info, fit = NULL) {
+  #   if (is.null(fit)) {
+  #     fit <- fitfun(par, deriv = 2L)
+  #   }
+  #   nu <- nuQuantities(par, fit)
+  #   nu.stu <- nu$nu.stu
+  #   nu.s.tu <- nu$nu.s.tu
+  #   neededQuant <- c(inverse_info, nu.stu, nu.s.tu)
+  #   adj <- .C("mod1",  as.integer((k+m)), as.double(neededQuant), as.double(rep(0.0,(k+m))))[[3]]
+  #   return(adj)
+  # }
+  
+  adjustment <- function(par,inverse_info, fit = NULL)
+  {
+    p <- k+m
+    #b_vector <- numeric(p)
+    m1_vector <- numeric(p)
     if (is.null(fit)) {
       fit <- fitfun(par, deriv = 2L)
     }
     nu <- nuQuantities(par, fit)
-    nu.stu <- nu$nu.stu
-    nu.s.tu <- nu$nu.s.tu
-    neededQuant <- c(inverse_info, nu.stu, nu.s.tu)
-    adj <- .C("mod1",  as.integer((k+m)), as.double(neededQuant), as.double(rep(0.0,(k+m))))[[3]]
-    return(adj)
+    nu_s_t_u <- nu$nu.stu
+    nu_s_tu <- nu$nu.s.tu
+    F1sum <- function(t){
+      return ( sum(diag(inverse_info%*%(nu_s_t_u[t,,]+nu_s_tu[t,,]))) )
+    }
+    F2sum <- function(t){
+      return ( sum(diag(h_r%*%( nu_s_t_u[t,,]/3 + nu_s_tu[t,,]/2))) )
+    }
+    for (r in 1:p) 
+    {
+      inverse_info_r <- inverse_info[r, ]
+      h_r <- tcrossprod(inverse_info_r) / inverse_info_r[r]
+      m1_vector[r] <- sum(inverse_info_r*(0.5*sapply(1:p,F1sum)-sapply(1:p,F2sum))) 
+    }
+    return(m1_vector)
   }
+  
   
   ## get the starting point
   # par <- start
@@ -481,8 +509,50 @@ mbrbetareg.fit <- function(x, y, z = NULL, weights = NULL, offset = NULL,
   #                                    link = link, link.phi = link.phi, type = "BR",
   #                                    control = ocontrol)
   
-  ## get the median BR estimates     ##
-  if(type == "medianBR" & fsmaxit <=0) 
+  ## old version##
+  
+  # get the median BR estimates     ##
+  # if(type == "medianBR" & fsmaxit <=0)
+  #   warning("BR cannot be performed with fsmaxit <= 0")
+  # if(type =="medianBR" & opt$convergence > 0) par <- start
+  # step <- .Machine$integer.max
+  # iter <- 0
+  # if(type == "medianBR" & fsmaxit > 0) {
+  #   if( fsmaxit > 0) {
+  #     for (iter in seq.int(fsmaxit)) {
+  #       stepPrev <- step
+  #       stepFactor <- 0
+  #       testhalf <- TRUE
+  #       while (testhalf & stepFactor < 11) {
+  #         fit <- fitfun(par, deriv = 2L)
+  #         score <- gradfun(par, sum = TRUE,  fit = fit)
+  #         inverse_info <- try(information(par, inverse = TRUE, fit = fit))
+  #         if (failed <- inherits(inverse_info, "try-error")) {
+  #           warning("failed to invert the information matrix: iteration stopped prematurely")
+  #           break
+  #         }
+  #         mod <- mod1(par, inverse_info, fit)
+  #         par <- par + 2^(-stepFactor) * (step <- mod + inverse_info%*%score)
+  #         stepFactor <- stepFactor + 1
+  #         testhalf <- drop(crossprod(stepPrev) < crossprod(step))
+  #       }
+  #       if (failed | (all(abs(step) < fstol))) {
+  #         break
+  #       }
+  #     }
+  #   }
+  # }
+  # 
+  # if((fsmaxit == 0 & opt$convergence > 0) | iter >= fsmaxit) {
+  #   converged <- FALSE
+  #   warning("optimization failed to converge")
+  # } else {
+  #   converged <- TRUE
+  # }
+  
+  ## new version
+  
+  if(type == "medianBR" & fsmaxit <=0)
     warning("BR cannot be performed with fsmaxit <= 0")
   if(type =="medianBR" & opt$convergence > 0) par <- start
   step <- .Machine$integer.max
@@ -501,10 +571,10 @@ mbrbetareg.fit <- function(x, y, z = NULL, weights = NULL, offset = NULL,
             warning("failed to invert the information matrix: iteration stopped prematurely")
             break
           }
-          mod <- mod1(par, inverse_info, fit)
-          par <- par + 2^(-stepFactor) * (step <- mod + inverse_info%*%score)
+          M1 <- adjustment(par,inverse_info, fit)
+          par <- par + 2^(-stepFactor) * (step <- M1 + inverse_info%*%score)
           stepFactor <- stepFactor + 1
-          testhalf <- drop(crossprod(stepPrev) < crossprod(step))  
+          testhalf <- drop(crossprod(stepPrev) < crossprod(step))
         }
         if (failed | (all(abs(step) < fstol))) {
           break
@@ -512,13 +582,15 @@ mbrbetareg.fit <- function(x, y, z = NULL, weights = NULL, offset = NULL,
       }
     }
   }
-  
+
   if((fsmaxit == 0 & opt$convergence > 0) | iter >= fsmaxit) {
     converged <- FALSE
     warning("optimization failed to converge")
   } else {
     converged <- TRUE
   }
+
+  
   
   ## extract fitted values/parameters
   fit <- fitfun(par, deriv = 2L)
@@ -564,7 +636,8 @@ mbrbetareg.fit <- function(x, y, z = NULL, weights = NULL, offset = NULL,
     phi = phi_full,
     loglik = ll,
     vcov = vcov,
-    grad = if (type=="ML") grad else grad+mod%*%info,
+    #grad = if (type=="ML") grad else grad+mod%*%info,
+    grad = if (type=="ML") grad else grad+info%*%M1,
     pseudo.r.squared = pseudor2,
     link = list(mean = linkobj, precision = phi_linkobj)
   )
@@ -572,66 +645,66 @@ mbrbetareg.fit <- function(x, y, z = NULL, weights = NULL, offset = NULL,
 }
 
 
-print.mbrbetareg <- function(x, digits = max(3, getOption("digits") - 3), ...)
-{
-  cat("\nCall:", deparse(x$call, width.cutoff = floor(getOption("width") * 0.85)), "", sep = "\n")
+# print.mbrbetareg <- function(x, digits = max(3, getOption("digits") - 3), ...)
+# {
+#   cat("\nCall:", deparse(x$call, width.cutoff = floor(getOption("width") * 0.85)), "", sep = "\n")
+# 
+#   if(!x$converged) {
+#     cat("model did not converge\n")
+#   } else {
+#     if(length(x$coefficients$mean)) {
+#       cat(paste("Coefficients (mean model with ", x$link$mean$name, " link):\n", sep = ""))
+#       print.default(format(x$coefficients$mean, digits = digits), print.gap = 2, quote = FALSE)
+#       cat("\n")
+#     } else cat("No coefficients (in mean model)\n\n")
+#     if(x$phi) {
+#       if(length(x$coefficients$precision)) {
+#         cat(paste("Phi coefficients (precision model with ", x$link$precision$name, " link):\n", sep = ""))
+#         print.default(format(x$coefficients$precision, digits = digits), print.gap = 2, quote = FALSE)
+#         cat("\n")
+#       } else cat("No coefficients (in precision model)\n\n")
+#     }
+#   }
+# 
+#   invisible(x)
+# }
+# 
+# summary.mbrbetareg <- function(object, phi = NULL, type = "response", ...)
+# {
+#   ## treat phi as full model parameter?
+#   if(!is.null(phi)) object$phi <- phi
+# 
+#   ## residuals
+#   type <- match.arg(type, c("pearson", "deviance", "response", "weighted", "sweighted", "sweighted2"))
+#   object$residuals <- residuals(object, type = type)
+#   object$residuals.type <- type
+# 
+#   ## extend coefficient table
+#   k <- length(object$coefficients$mean)
+#   m <- length(object$coefficients$precision)
+#   cf <- as.vector(do.call("c", object$coefficients))
+#   se <- sqrt(diag(object$vcov))
+#   cf <- cbind(cf, se, cf/se, 2 * pnorm(-abs(cf/se)))
+#   colnames(cf) <- c("Estimate", "Std. Error", "z value", "Pr(>|z|)")
+#   cf <- list(mean = cf[seq.int(length.out = k), , drop = FALSE], precision = cf[seq.int(length.out = m) + k, , drop = FALSE])
+#   rownames(cf$mean) <- names(object$coefficients$mean)
+#   rownames(cf$precision) <- names(object$coefficients$precision)
+#   object$coefficients <- cf
+# 
+#   ## number of iterations
+#   mytail <- function(x) x[length(x)]
+#   object$iterations <- c("optim" = as.vector(mytail(na.omit(object$optim$count))), "scoring" = as.vector(object$scoring))
+# 
+#   ## delete some slots
+#   object$fitted.values <- object$terms <- object$model <- object$y <-
+#     object$x <- object$levels <- object$contrasts <- object$start <- NULL
+# 
+#   ## return
+#   class(object) <- "summary.mbrbetareg"
+#   object
+# }
 
-  if(!x$converged) {
-    cat("model did not converge\n")
-  } else {
-    if(length(x$coefficients$mean)) {
-      cat(paste("Coefficients (mean model with ", x$link$mean$name, " link):\n", sep = ""))
-      print.default(format(x$coefficients$mean, digits = digits), print.gap = 2, quote = FALSE)
-      cat("\n")
-    } else cat("No coefficients (in mean model)\n\n")
-    if(x$phi) {
-      if(length(x$coefficients$precision)) {
-        cat(paste("Phi coefficients (precision model with ", x$link$precision$name, " link):\n", sep = ""))
-        print.default(format(x$coefficients$precision, digits = digits), print.gap = 2, quote = FALSE)
-        cat("\n")
-      } else cat("No coefficients (in precision model)\n\n")
-    }
-  }
-
-  invisible(x)
-}
-
-summary.mbrbetareg <- function(object, phi = NULL, type = "response", ...)
-{
-  ## treat phi as full model parameter?
-  if(!is.null(phi)) object$phi <- phi
-
-  ## residuals
-  type <- match.arg(type, c("pearson", "deviance", "response", "weighted", "sweighted", "sweighted2"))
-  object$residuals <- residuals(object, type = type)
-  object$residuals.type <- type
-
-  ## extend coefficient table
-  k <- length(object$coefficients$mean)
-  m <- length(object$coefficients$precision)
-  cf <- as.vector(do.call("c", object$coefficients))
-  se <- sqrt(diag(object$vcov))
-  cf <- cbind(cf, se, cf/se, 2 * pnorm(-abs(cf/se)))
-  colnames(cf) <- c("Estimate", "Std. Error", "z value", "Pr(>|z|)")
-  cf <- list(mean = cf[seq.int(length.out = k), , drop = FALSE], precision = cf[seq.int(length.out = m) + k, , drop = FALSE])
-  rownames(cf$mean) <- names(object$coefficients$mean)
-  rownames(cf$precision) <- names(object$coefficients$precision)
-  object$coefficients <- cf
-
-  ## number of iterations
-  mytail <- function(x) x[length(x)]
-  object$iterations <- c("optim" = as.vector(mytail(na.omit(object$optim$count))), "scoring" = as.vector(object$scoring))
-
-  ## delete some slots
-  object$fitted.values <- object$terms <- object$model <- object$y <-
-    object$x <- object$levels <- object$contrasts <- object$start <- NULL
-
-  ## return
-  class(object) <- "summary.mbrbetareg"
-  object
-}
-
-print.summary.mbrbetareg <- function(x, digits = max(3, getOption("digits") - 3), ...)
+print.summary.betareg <- function(x, digits = max(3, getOption("digits") - 3), ...)
 {
   cat("\nCall:", deparse(x$call, width.cutoff = floor(getOption("width") * 0.85)), "", sep = "\n")
 
